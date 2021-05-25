@@ -1,7 +1,13 @@
 {
-  "name": "cli-script",
-  "version": "1.0.0",
-  "repository": "https://gitlab.com/wvcode/javascript/cli-script.git",
+  "name": "@wvcode/requests",
+  "version": "0.0.2",
+  "main": "requests.js",
+  "repository": "https://gitlab.com/wvcode/modules/requests.git",
   "author": "Walter Ritzel <wpcortes@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "axios-ntlm": "^1.1.6",
+    "lodash": "^4.17.21"
+  }
 }
