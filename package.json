@@ -1,13 +1,13 @@
 {
   "name": "@wvcode/requests",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "requests.js",
   "repository": "https://gitlab.com/wvcode/modules/requests.git",
   "author": "Walter Ritzel <wpcortes@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "axios": "^0.21.1",
-    "axios-ntlm": "^1.1.6",
+    "httpntlm": "^1.7.7",
     "lodash": "^4.17.21"
   }
 }

@@ -8,13 +8,6 @@ function getRequestsConfig() {
     responseType: 'json',
     responseEncoding: 'utf8',
     proxy: null,
-    useAuth: false,
-    credentials: {
-      username: null,
-      password: null,
-      domain: null,
-      workstation: null,
-    },
   }
 }
 

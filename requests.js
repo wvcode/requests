@@ -1,7 +1,8 @@
 const axios = require('axios').default
-const ntlm = require('axios-ntlm').NtlmClient
+const httpntlm = require('httpntlm')
 const config = require('./requests-config')
 const _ = require('lodash')
+const util = require('util')
 
 /**
  * Classe para realizar operações via web
@@ -9,32 +10,54 @@ const _ = require('lodash')
 class requests {
   #client = null
   #config = null
+  #safeObject = null
+  #useAuth = null
+  #authType = null
 
   /**
    * Cria instância da classe requests
    * @param {Object} cfg - configuração da classe
    */
-  constructor(cfg = null) {
+  constructor({
+    cfg = null,
+    useAuth = false,
+    authType = null,
+    credentials = null,
+  } = {}) {
     this.#config = config()
+    this.#useAuth = useAuth
+    this.#authType = authType
+
     if (cfg) {
       Object.entries(cfg).forEach(([key, value]) => {
         this.#config[key] = value
       })
     }
-    if (!this.#config.useAuth) {
+    if (!useAuth) {
       this.#client = axios.create(this.#config)
     } else {
-      let cred = {
-        username: this.#config.credentials.username,
-        password: this.#config.credentials.password,
-        domain: this.#config.credentials.domain,
-        workstation: this.#config.credentials.workstation,
-      }
-
-      if (cred.username && cred.password) {
-        this.#client = ntlm(cred, this.#config)
+      if (credentials.username && credentials.password) {
+        if (authType == 'NTLM') {
+          this.#client = util.promisify(httpntlm.get)
+          this.#safeObject = {
+            username: credentials.username,
+            password: credentials.password,
+            domain: credentials.domain,
+            workstation: credentials.workstation,
+          }
+        } else if (authType == 'Basic') {
+          this.#client = axios.create(this.#config)
+          this.#safeObject = {
+            auth: {
+              username: credentials.username,
+              password: credentials.password,
+            },
+          }
+        } else {
+          throw `Método ${authType} não reconhecido...`
+        }
       } else {
-        throw 'Credentials were not provided.'
+        throw 'As credenciais não foram fornecidas.'
       }
     }
   }
@@ -61,10 +84,38 @@ class requests {
    * @returns Objeto JSON contendo os dados e o status da chamada
    */
   async get(url, params = null) {
-    const response = await this.#client.get(
-      this.returnFormattedURL(url),
-      params
-    )
+    let response = null
+    if (!this.#useAuth || (this.#useAuth && this.#authType == 'Basic')) {
+      response = await this.#client.get(this.returnFormattedURL(url))
+    } else if (this.#useAuth && this.#authType == 'Basic') {
+      response = await this.#client.get(
+        this.returnFormattedURL(url),
+        this.#safeObject
+      )
+    } else if (this.#useAuth && this.#authType == 'NTLM') {
+      let obj = { ...this.#safeObject }
+      obj['url'] = url
+      obj['rejectUnauthorized'] = false
+      let res = await this.#client(obj)
+      response = {
+        data:
+          this.#config.responseType == 'json' ? JSON.parse(res.body) : res.body,
+        status: res.statusCode,
+      }
+    }
+    if (response) return { data: response.data, status_code: response.status }
+    else
+      return {
+        data: { error: 'Erro desconhecido' },
+        status_code: 999,
+      }
+  }
+
+  async getNtlm(url, params = null) {
+    const response = await this.#client({
+      url: this.returnFormattedURL(url),
+      method: 'get',
+    })
     return { data: response.data, status_code: response.status }
   }
 
