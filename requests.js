@@ -10,7 +10,7 @@ const util = require('util')
 class requests {
   #client = null
   #config = null
-  #safeObject = null
+  #safeObject = {}
   #useAuth = null
   #authType = null
 
@@ -19,7 +19,7 @@ class requests {
    * @param {Object} cfg - configuração da classe
    */
   constructor({
-    cfg = null,
+    clientConfig = null,
     useAuth = false,
     authType = null,
     credentials = null,
@@ -28,31 +28,32 @@ class requests {
     this.#useAuth = useAuth
     this.#authType = authType
 
-    if (cfg) {
-      Object.entries(cfg).forEach(([key, value]) => {
+    // Adiciona/Altera propriedades a configuração padrão que foi carregada
+    if (clientConfig) {
+      Object.entries(clientConfig).forEach(([key, value]) => {
         this.#config[key] = value
       })
     }
+
     if (!useAuth) {
       this.#client = axios.create(this.#config)
     } else {
-      if (credentials.username && credentials.password) {
+      if (credentials?.username && credentials?.password) {
         if (authType == 'NTLM') {
-          this.#client = util.promisify(httpntlm.get)
-          this.#safeObject = {
-            username: credentials.username,
-            password: credentials.password,
-            domain: credentials.domain,
-            workstation: credentials.workstation,
+          this.#client = {
+            get: util.promisify(httpntlm.get),
+            post: util.promisify(httpntlm.post),
           }
+
+          Object.entries(credentials).forEach(([key, value]) => {
+            this.#safeObject[key] = value
+          })
         } else if (authType == 'Basic') {
           this.#client = axios.create(this.#config)
-          this.#safeObject = {
-            auth: {
-              username: credentials.username,
-              password: credentials.password,
-            },
-          }
+
+          Object.entries(credentials).forEach(([key, value]) => {
+            this.#safeObject['auth'][key] = value
+          })
         } else {
           throw `Método ${authType} não reconhecido...`
         }
@@ -68,12 +69,9 @@ class requests {
    * @returns a URL formatada
    */
   returnFormattedURL(url) {
-    let formattedURL = ''
-    if (url.startsWith('http')) {
-      formattedURL = `${url}`
-    } else {
-      formattedURL = `${this.#config.baseURL || ''}${url}`
-    }
+    let formattedURL = url.startsWith('http')
+      ? `${url}`
+      : `${this.#config.baseURL || ''}${url}`
     return formattedURL
   }
 
@@ -85,7 +83,7 @@ class requests {
    */
   async get(url, params = null) {
     let response = null
-    if (!this.#useAuth || (this.#useAuth && this.#authType == 'Basic')) {
+    if (!this.#useAuth) {
       response = await this.#client.get(this.returnFormattedURL(url))
     } else if (this.#useAuth && this.#authType == 'Basic') {
       response = await this.#client.get(
@@ -95,8 +93,7 @@ class requests {
     } else if (this.#useAuth && this.#authType == 'NTLM') {
       let obj = { ...this.#safeObject }
       obj['url'] = url
-      obj['rejectUnauthorized'] = false
-      let res = await this.#client(obj)
+      let res = await this.#client.get(obj)
       response = {
         data:
           this.#config.responseType == 'json' ? JSON.parse(res.body) : res.body,
@@ -111,14 +108,6 @@ class requests {
       }
   }
 
-  async getNtlm(url, params = null) {
-    const response = await this.#client({
-      url: this.returnFormattedURL(url),
-      method: 'get',
-    })
-    return { data: response.data, status_code: response.status }
-  }
-
   /**
    * Realizar uma chamada HTTP no modo POST
    * @param {String} url - a url a ser chamada via HTTP
@@ -126,8 +115,32 @@ class requests {
    * @returns Objeto JSON contendo os dados e o status da chamada
    */
   async post(url, data = null) {
-    const response = await this.#client.post(this.returnFormattedURL(url), data)
-    return { data: response.data, status_code: response.status_code }
+    let response = null
+    if (!this.#useAuth) {
+      response = await this.#client.post(this.returnFormattedURL(url), data)
+    } else if (this.#useAuth && this.#authType == 'Basic') {
+      response = await this.#client.post(
+        this.returnFormattedURL(url),
+        data,
+        this.#safeObject
+      )
+    } else if (this.#useAuth && this.#authType == 'NTLM') {
+      let obj = { ...this.#safeObject }
+      obj['url'] = url
+      obj['data'] = data
+      let res = await this.#client.post(obj)
+      response = {
+        data:
+          this.#config.responseType == 'json' ? JSON.parse(res.body) : res.body,
+        status: res.statusCode,
+      }
+    }
+    if (response) return { data: response.data, status_code: response.status }
+    else
+      return {
+        data: { error: 'Erro desconhecido' },
+        status_code: 998,
+      }
   }
 
   /**
